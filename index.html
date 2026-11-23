@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Aranda Ven — Prueba en Paralelo (Cliente/Admin + Conductor + Restaurante)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: #090d16;
+      color: #f8fafc;
+      user-select: none;
+    }
+    .phone-shell {
+      max-width: 440px;
+      margin: 0 auto;
+      min-height: 100vh;
+      background: #111827;
+      display: flex;
+      flex-direction: column;
+      border-left: 1px solid #1f2937;
+      border-right: 1px solid #1f2937;
+      box-shadow: 0 0 45px rgba(0, 0, 0, 0.85);
+    }
+  </style>
+</head>
+<body>
+<div class="phone-shell">
+
+  <!-- BARRA SUPERIOR DE ROL Y ESTADO DE CONEXIÓN -->
+  <div class="bg-slate-950 border-b border-slate-800 px-3 py-2.5 sticky top-0 z-50 space-y-2">
+    <div class="flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <span class="w-8 h-8 rounded-lg bg-gradient-to-br from-amber-400 to-orange-600 text-slate-950 font-black text-xs flex items-center justify-center">
+          AV
+        </span>
+        <div>
+          <div class="text-xs font-black text-white flex items-center gap-1.5">
+            <span>Aranda Ven</span>
+            <span class="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">Prueba Sábado</span>
+          </div>
+          <div id="sync-status-label" class="text-[10px] text-slate-400">
+            Modo Local (Listo para conectar Firebase)
+          </div>
+        </div>
+      </div>
+
+      <button onclick="toggleFirebaseModal()" class="text-[11px] bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-slate-700 px-2.5 py-1.5 rounded-xl font-bold">
+        <i class="fa-solid fa-database mr-1"></i> Firebase
+      </button>
+    </div>
+
+    <!-- SELECTOR DE ROL (OCULTO EN TELÉFONOS DE ESPAÑA SI SE ABRE CON ?rol=conductor o ?rol=restaurante) -->
+    <div id="role-switcher-bar" class="grid grid-cols-3 gap-1 bg-slate-900 p-1 rounded-xl border border-slate-800">
+      <button onclick="setActiveRole('giovanni')" id="btn-role-giovanni" class="py-1.5 px-2 rounded-lg text-[11px] font-extrabold bg-amber-500 text-slate-950 shadow">
+        Pedido + Admin
+      </button>
+      <button onclick="setActiveRole('driver')" id="btn-role-driver" class="py-1.5 px-2 rounded-lg text-[11px] font-extrabold text-slate-300 hover:text-white relative">
+        Conductor (ES)
+        <span id="badge-driver" class="hidden absolute -top-1 -right-1 bg-rose-500 text-white text-[9px] font-black w-4 h-4 rounded-full flex items-center justify-center">!</span>
+      </button>
+      <button onclick="setActiveRole('restaurant')" id="btn-role-restaurant" class="py-1.5 px-2 rounded-lg text-[11px] font-extrabold text-slate-300 hover:text-white relative">
+        Burger King (ES)
+        <span id="badge-rest" class="hidden absolute -top-1 -right-1 bg-emerald-500 text-slate-950 text-[9px] font-black w-4 h-4 rounded-full flex items-center justify-center">!</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- MODAL SENCILLO PARA PEGAR CREDENCIALES DE FIREBASE -->
+  <div id="firebase-modal" class="hidden bg-slate-950 border-b border-emerald-500/40 p-3.5 space-y-2.5">
+    <div class="flex items-center justify-between">
+      <span class="text-xs font-extrabold text-emerald-400"><i class="fa-solid fa-plug mr-1"></i> Conectar Firebase Firestore en Tiempo Real</span>
+      <button onclick="toggleFirebaseModal()" class="text-xs text-slate-400 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <p class="text-[11px] text-slate-400 leading-snug">
+      Pega aquí el objeto JSON de configuración de tu proyecto Firebase (<code class="text-slate-200">apiKey</code>, <code class="text-slate-200">projectId</code>, etc.) para sincronizar los teléfonos entre Venezuela y España.
+    </p>
+    <textarea id="firebase-config-input" rows="4" placeholder='{"apiKey":"...","authDomain":"...","projectId":"aranda-ven-prueba","appId":"..."}' class="w-full bg-slate-900 border border-slate-700 rounded-xl p-2 text-[11px] text-emerald-300 font-mono focus:outline-none"></textarea>
+    <div class="flex gap-2">
+      <button onclick="connectFirebaseFromInput()" class="flex-1 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold text-xs">
+        Activar Sincronización en Vivo
+      </button>
+      <button onclick="disconnectFirebase()" class="px-3 py-2 rounded-xl bg-slate-800 text-slate-300 font-bold text-xs">
+        Modo Local
+      </button>
+    </div>
+  </div>
+
+  <!-- ================================================================= -->
+  <!-- VISTA 1: GIOVANNI (GENERADOR DE PEDIDO + PANEL ADMINISTRADOR)      -->
+  <!-- ================================================================= -->
+  <main id="view-giovanni" class="flex-1 p-3 space-y-3 overflow-y-auto pb-16">
+
+    <!-- TARJETA DEL COMBO BURGER KING (12,50 €) + DESTINO FUENTESPINA -->
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl p-3.5 space-y-3 shadow-lg">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+        <div>
+          <span class="text-[10px] font-extrabold uppercase text-amber-400 block">
+            <i class="fa-solid fa-burger mr-1"></i> Burger King • Centro Comercial El Campo
+          </span>
+          <h2 class="text-sm font-black text-white">Combo Burger King Prueba</h2>
+        </div>
+        <span class="text-sm font-black text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-2.5 py-1 rounded-xl">
+          12,50 €
+        </span>
+      </div>
+
+      <!-- Imagen / Ficha Visual del Combo -->
+      <div class="bg-slate-950 border border-slate-800 rounded-xl p-3 flex items-center gap-3">
+        <div class="w-16 h-16 rounded-xl bg-gradient-to-br from-amber-500/20 to-orange-600/20 border border-amber-500/40 flex flex-col items-center justify-center text-amber-400 shrink-0">
+          <i class="fa-solid fa-burger text-xl"></i>
+          <span class="text-[9px] font-black mt-0.5">COMBO BK</span>
+        </div>
+        <div class="flex-1">
+          <div class="text-xs font-extrabold text-white">Combo Whopper / Crispy + Patatas + Bebida</div>
+          <p class="text-[11px] text-slate-400 mt-0.5">
+            Entrega: <strong class="text-slate-200">Fuentespina (Casa de Nemesio Santos)</strong>
+          </p>
+          <div class="flex items-center justify-between mt-2">
+            <span class="text-[10px] font-bold text-slate-400 uppercase">Cantidad:</span>
+            <div class="flex items-center gap-2 bg-slate-900 border border-slate-700 rounded-lg px-2 py-0.5">
+              <button onclick="changeQty(-1)" class="text-slate-300 hover:text-white font-black px-1">-</button>
+              <input type="number" min="1" max="10" id="order-qty-input" value="1" onchange="recalcOrderPreview()" class="w-8 bg-transparent text-center text-xs font-black text-amber-400 focus:outline-none" />
+              <button onclick="changeQty(1)" class="text-slate-300 hover:text-white font-black px-1">+</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Destino y Cuenta Wise Receptora (Simulación Restaurante) -->
+      <div class="grid grid-cols-1 gap-2 text-xs">
+        <div class="bg-slate-950 border border-slate-800 rounded-xl p-2.5">
+          <label class="text-[10px] font-bold uppercase text-slate-400 block mb-1">
+            Destino de Entrega en Prueba
+          </label>
+          <input type="text" id="order-dest-input" value="Fuentespina — Casa de Nemesio Santos" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-white focus:outline-none focus:border-amber-400" />
+        </div>
+
+        <div class="grid grid-cols-2 gap-2">
+          <div class="bg-slate-950 border border-slate-800 rounded-xl p-2.5">
+            <label class="text-[10px] font-bold uppercase text-slate-400 block mb-1">
+              Tarjeta Simulada (Cliente)
+            </label>
+            <input type="text" id="sim-card-input" value="4532 •••• •••• 8810" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-xs font-mono text-slate-200 focus:outline-none" />
+          </div>
+          <div class="bg-slate-950 border border-sky-500/30 rounded-xl p-2.5">
+            <label class="text-[10px] font-bold uppercase text-sky-400 block mb-1">
+              Cuenta Wise (Restaurante)
+            </label>
+            <input type="text" id="wise-account-input" value="CUENTA-WISE-PRUEBA-LUIS" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-xs font-mono text-sky-300 focus:outline-none" />
+          </div>
+        </div>
+      </div>
+
+      <!-- Desglose de Total a Simular -->
+      <div class="bg-slate-950/90 border border-slate-800 rounded-xl p-2.5 space-y-1 text-xs">
+        <div class="flex justify-between text-slate-400">
+          <span>Combo Burger King (<span id="preview-qty-txt">1</span> × 12,50 €):</span>
+          <span id="preview-food-eur" class="font-bold text-slate-200">12,50 €</span>
+        </div>
+        <div class="flex justify-between text-slate-400">
+          <span>Envío en vehículo a Fuentespina (Anillo 2):</span>
+          <span class="font-bold text-slate-200">8,00 €</span>
+        </div>
+        <div class="flex justify-between text-slate-400">
+          <span>Tarifa de servicio de la app:</span>
+          <span class="font-bold text-slate-200">1,00 €</span>
+        </div>
+        <div class="flex justify-between font-black text-sm text-white pt-1 border-t border-slate-800">
+          <span>Total Simulado a Pagar:</span>
+          <span id="preview-total-eur" class="text-amber-400">21,50 €</span>
+        </div>
+      </div>
+
+      <button onclick="sendSimulatedOrder()" class="w-full py-3.5 rounded-2xl bg-gradient-to-r from-amber-400 to-orange-500 hover:from-amber-300 hover:to-orange-400 text-slate-950 font-black text-xs uppercase tracking-wide shadow-lg flex items-center justify-center gap-2 transition active:scale-[0.99]">
+        <i class="fa-solid fa-paper-plane"></i> Simular Pago y Disparar Alertas (Conductor + Burger King)
+      </button>
+    </div>
+
+    <!-- MÓDULO ADMINISTRADOR DE GIOVANNI (MONITOREO EN TIEMPO REAL) -->
+    <div class="bg-gradient-to-br from-slate-900 via-slate-900 to-slate-950 border border-emerald-500/40 rounded-2xl p-3.5 space-y-3 shadow-lg">
+      <div class="flex items-center justify-between">
+        <span class="text-xs font-extrabold uppercase text-emerald-400 flex items-center gap-1.5">
+          <i class="fa-solid fa-gauge-high"></i> Panel Administrador (Control Giovanni)
+        </span>
+        <span class="text-[10px] font-bold bg-emerald-500/15 text-emerald-300 px-2 py-0.5 rounded-full border border-emerald-500/30">
+          Monitoreo en Vivo
+        </span>
+      </div>
+
+      <div class="grid grid-cols-3 gap-2 text-center">
+        <div class="bg-slate-950 border border-slate-800 rounded-xl p-2">
+          <span class="text-[9px] text-slate-400 uppercase block">Ganancia App</span>
+          <span id="admin-profit-eur" class="text-sm font-black text-emerald-400">0,00 €</span>
+        </div>
+        <div class="bg-slate-950 border border-slate-800 rounded-xl p-2">
+          <span class="text-[9px] text-slate-400 uppercase block">Billetera Chofer</span>
+          <span id="admin-wallet-eur" class="text-sm font-black text-amber-400">25,00 €</span>
+        </div>
+        <div class="bg-slate-950 border border-slate-800 rounded-xl p-2">
+          <span class="text-[9px] text-slate-400 uppercase block">Órdenes Prueba</span>
+          <span id="admin-orders-count" class="text-sm font-black text-sky-400">0</span>
+        </div>
+      </div>
+
+      <div id="admin-orders-monitor" class="space-y-2">
+        <p class="text-[11px] text-slate-500 italic">Aún no se ha enviado ninguna orden en esta sesión. Pulsa el botón naranja arriba para iniciar la corrida.</p>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- ================================================================= -->
+  <!-- VISTA 2: TELÉFONO #1 EN ESPAÑA — CONDUCTOR (SIN MÓDULO ADMIN)    -->
+  <!-- ================================================================= -->
+  <main id="view-driver" class="hidden flex-1 p-3 space-y-3 overflow-y-auto pb-16">
+    <div class="bg-slate-900 border border-amber-500/40 rounded-2xl p-3.5 space-y-2">
+      <div class="flex items-center justify-between">
+        <span class="text-[10px] font-extrabold uppercase text-amber-400">
+          <i class="fa-solid fa-car-side mr-1"></i> Vista Conductor • Aranda de Duero (Vehículo)
+        </span>
+        <span class="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">Activo</span>
+      </div>
+      <div class="flex items-center justify-between text-xs pt-1 border-t border-slate-800">
+        <span class="text-slate-400">Saldo Billetera Prepagada:</span>
+        <span id="driver-wallet-display" class="font-black text-emerald-400">25,00 €</span>
+      </div>
+    </div>
+
+    <div id="driver-notifications-list" class="space-y-2.5">
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 text-center space-y-1.5">
+        <i class="fa-solid fa-bell text-slate-600 text-2xl"></i>
+        <p class="text-xs font-bold text-slate-300">Esperando notificación de carrera / recogida</p>
+        <p class="text-[11px] text-slate-500">Cuando se dispare el pedido, aquí aparecerá la ruta hacia Burger King (C.C. El Campo) y Fuentespina.</p>
+      </div>
+    </div>
+  </main>
+
+  <!-- ================================================================= -->
+  <!-- VISTA 3: TELÉFONO #2 EN ESPAÑA — RESTAURANTE BURGER KING (SIN ADMIN)-->
+  <!-- ================================================================= -->
+  <main id="view-restaurant" class="hidden flex-1 p-3 space-y-3 overflow-y-auto pb-16">
+    <div class="bg-slate-900 border border-emerald-500/40 rounded-2xl p-3.5 space-y-1.5">
+      <div class="flex items-center justify-between">
+        <span class="text-[10px] font-extrabold uppercase text-emerald-400">
+          <i class="fa-solid fa-store mr-1"></i> Vista Restaurante • Burger King (C.C. El Campo)
+        </span>
+        <span class="text-[10px] font-bold text-sky-300 bg-sky-500/10 px-2 py-0.5 rounded-full border border-sky-500/30">
+          Liquidación Wise
+        </span>
+      </div>
+      <p class="text-[11px] text-slate-400">
+        Recibe la orden entrante para darle el <strong class="text-white">"Ejecútese"</strong> y preparar el combo para el conductor.
+      </p>
+    </div>
+
+    <div id="restaurant-notifications-list" class="space-y-2.5">
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 text-center space-y-1.5">
+        <i class="fa-solid fa-utensils text-slate-600 text-2xl"></i>
+        <p class="text-xs font-bold text-slate-300">Sin órdenes entrantes en cocina</p>
+        <p class="text-[11px] text-slate-500">Al simular el pedido, llegará aquí la notificación para dar el ejecútese a la preparación.</p>
+      </div>
+    </div>
+  </main>
+
+  <!-- TOAST -->
+  <div id="toast-bar" class="hidden fixed bottom-4 left-1/2 -translate-x-1/2 max-w-[390px] w-[92%] bg-slate-900 border border-amber-400/70 text-white px-3.5 py-2.5 rounded-2xl shadow-2xl z-50 text-xs font-semibold flex items-center gap-2">
+    <i class="fa-solid fa-circle-check text-emerald-400"></i>
+    <span id="toast-msg"></span>
+  </div>
+
+</div>
+
+<!-- SDK DE FIREBASE (MODO COMPATIBLE PARA INTEGRACIÓN RÁPIDA EN HTML) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+
+<script>
+  const UNIT_PRICE_EUR = 12.50;
+  const DELIVERY_EUR = 8.00;
+  const SERVICE_EUR = 1.00;
+  const REST_COMM_PCT = 0.15;
+  const DELIVERY_APP_PCT = 0.25;
+
+  const state = {
+    role: 'giovanni',
+    lockedRole: false,
+    walletEur: 25.00,
+    ownerProfitEur: 0.00,
+    orders: [],
+    firebaseDb: null,
+    firebaseActive: false
+  };
+
+  function fmtEur(val) {
+    return `${Number(val || 0).toFixed(2).replace('.', ',')} €`;
+  }
+
+  function showToast(msg) {
+    const bar = document.getElementById('toast-bar');
+    document.getElementById('toast-msg').textContent = msg;
+    bar.classList.remove('hidden');
+    clearTimeout(window._toastTimer);
+    window._toastTimer = setTimeout(() => bar.classList.add('hidden'), 3500);
+  }
+
+  function setActiveRole(role) {
+    state.role = role;
+    ['giovanni', 'driver', 'restaurant'].forEach(r => {
+      document.getElementById(`view-${r}`).classList.toggle('hidden', r !== role);
+      const btn = document.getElementById(`btn-role-${r}`);
+      if (btn) {
+        btn.className = (r === role)
+          ? 'py-1.5 px-2 rounded-lg text-[11px] font-extrabold bg-amber-500 text-slate-950 shadow relative'
+          : 'py-1.5 px-2 rounded-lg text-[11px] font-extrabold text-slate-300 hover:text-white relative';
+      }
+    });
+    renderAll();
+  }
+
+  function changeQty(delta) {
+    const inp = document.getElementById('order-qty-input');
+    const next = Math.max(1, Math.min(20, (parseInt(inp.value) || 1) + delta));
+    inp.value = next;
+    recalcOrderPreview();
+  }
+
+  function recalcOrderPreview() {
+    const qty = Math.max(1, parseInt(document.getElementById('order-qty-input').value) || 1);
+    const foodSub = qty * UNIT_PRICE_EUR;
+    const total = foodSub + DELIVERY_EUR + SERVICE_EUR;
+    document.getElementById('preview-qty-txt').textContent = qty;
+    document.getElementById('preview-food-eur').textContent = fmtEur(foodSub);
+    document.getElementById('preview-total-eur').textContent = fmtEur(total);
+  }
+
+  function buildOrderObject() {
+    const qty = Math.max(1, parseInt(document.getElementById('order-qty-input').value) || 1);
+    const dest = (document.getElementById('order-dest-input').value || 'Fuentespina — Casa de Nemesio Santos').trim();
+    const card = (document.getElementById('sim-card-input').value || '4532 •••• •••• 8810').trim();
+    const wise = (document.getElementById('wise-account-input').value || 'CUENTA-WISE-PRUEBA-LUIS').trim();
+
+    const foodSub = +(qty * UNIT_PRICE_EUR).toFixed(2);
+    const total = +(foodSub + DELIVERY_EUR + SERVICE_EUR).toFixed(2);
+    const restComm = +(foodSub * REST_COMM_PCT).toFixed(2);
+    const delivComm = +(DELIVERY_EUR * DELIVERY_APP_PCT).toFixed(2);
+    const appProfit = +(restComm + delivComm + SERVICE_EUR).toFixed(2);
+    const pin = Math.floor(1000 + Math.random() * 9000).toString();
+
+    return {
+      id: 'ARV-' + Math.floor(100 + Math.random() * 900),
+      comboName: 'Combo Burger King Prueba',
+      qty,
+      foodSub,
+      deliveryEur: DELIVERY_EUR,
+      serviceEur: SERVICE_EUR,
+      totalEur: total,
+      appProfitEur: appProfit,
+      simCard: card,
+      wiseAccount: wise,
+      pickupPlace: 'Burger King — Centro Comercial El Campo',
+      destination: dest,
+      pin,
+      restaurantStatus: 'pendiente_ejecutese', // 'pendiente_ejecutese' | 'en_preparacion' | 'listo_recoger'
+      driverStatus: 'notificado_ir_a_bk',      // 'notificado_ir_a_bk' | 'en_ruta_fuentespina' | 'entregado'
+      liquidated: false,
+      createdAt: new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
+    };
+  }
+
+  async function sendSimulatedOrder() {
+    const ord = buildOrderObject();
+    if (state.firebaseActive && state.firebaseDb) {
+      await state.firebaseDb.collection('ordenes_prueba').doc(ord.id).set(ord);
+      showToast(`Orden ${ord.id} enviada a Firebase (PIN #${ord.pin})`);
+    } else {
+      state.orders.unshift(ord);
+      showToast(`Pago simulado (${fmtEur(ord.totalEur)}) → Wise: ${ord.wiseAccount}. Alertas enviadas (PIN #${ord.pin}).`);
+      renderAll();
+    }
+  }
+
+  async function updateRestaurantStatus(orderId, nextStatus) {
+    const ord = state.orders.find(o => o.id === orderId);
+    if (!ord) return;
+    ord.restaurantStatus = nextStatus;
+    if (state.firebaseActive && state.firebaseDb) {
+      await state.firebaseDb.collection('ordenes_prueba').doc(orderId).update({ restaurantStatus: nextStatus });
+    }
+    showToast(`Burger King actualizó ${orderId}: ${nextStatus === 'en_preparacion' ? 'Ejecútese dado (En preparación)' : 'Lista para recoger'}`);
+    renderAll();
+  }
+
+  async function updateDriverStatus(orderId, nextStatus) {
+    const ord = state.orders.find(o => o.id === orderId);
+    if (!ord) return;
+    ord.driverStatus = nextStatus;
+    if (state.firebaseActive && state.firebaseDb) {
+      await state.firebaseDb.collection('ordenes_prueba').doc(orderId).update({ driverStatus: nextStatus });
+    }
+    showToast(`Conductor actualizó ${orderId} → ${nextStatus === 'en_ruta_fuentespina' ? 'En ruta a Fuentespina' : 'Estado actualizado'}`);
+    renderAll();
+  }
+
+  async function completeOrderWithPin(orderId) {
+    const ord = state.orders.find(o => o.id === orderId);
+    if (!ord || ord.liquidated) return;
+    const inp = document.getElementById(`pin-verify-${orderId}`);
+    const typedPin = (inp ? inp.value : '').trim();
+
+    if (typedPin !== ord.pin) {
+      showToast(`PIN incorrecto. El código del cliente es ${ord.pin}.`);
+      return;
+    }
+
+    ord.driverStatus = 'entregado';
+    ord.liquidated = true;
+    state.walletEur = Math.max(0, +(state.walletEur - ord.appProfitEur).toFixed(2));
+    state.ownerProfitEur = +(state.ownerProfitEur + ord.appProfitEur).toFixed(2);
+
+    if (state.firebaseActive && state.firebaseDb) {
+      await state.firebaseDb.collection('ordenes_prueba').doc(orderId).update({
+        driverStatus: 'entregado',
+        liquidated: true
+      });
+    }
+
+    showToast(`Entrega ${orderId} validada con PIN #${ord.pin}. Comisión ${fmtEur(ord.appProfitEur)} liquidada.`);
+    renderAll();
+  }
+
+  function fillPinHelper(orderId, pin) {
+    const inp = document.getElementById(`pin-verify-${orderId}`);
+    if (inp) inp.value = pin;
+  }
+
+  function renderAll() {
+    document.getElementById('admin-profit-eur').textContent = fmtEur(state.ownerProfitEur);
+    document.getElementById('admin-wallet-eur').textContent = fmtEur(state.walletEur);
+    document.getElementById('admin-orders-count').textContent = state.orders.length;
+    document.getElementById('driver-wallet-display').textContent = fmtEur(state.walletEur);
+
+    const activePending = state.orders.filter(o => !o.liquidated).length;
+    document.getElementById('badge-driver').classList.toggle('hidden', activePending === 0);
+    document.getElementById('badge-rest').classList.toggle('hidden', activePending === 0);
+
+    renderGiovanniMonitor();
+    renderDriverView();
+    renderRestaurantView();
+  }
+
+  function renderGiovanniMonitor() {
+    const box = document.getElementById('admin-orders-monitor');
+    if (state.orders.length === 0) {
+      box.innerHTML = `<p class="text-[11px] text-slate-500 italic">Aún no se ha enviado ninguna orden en esta sesión. Pulsa el botón naranja arriba para iniciar la corrida.</p>`;
+      return;
+    }
+
+    box.innerHTML = state.orders.map(o => `
+      <div class="bg-slate-950 border border-slate-800 rounded-xl p-3 space-y-1.5 text-xs">
+        <div class="flex items-center justify-between">
+          <span class="font-black text-amber-400">${o.id} • ${o.qty}x ${o.comboName}</span>
+          <span class="text-[11px] font-black text-white bg-slate-800 px-2 py-0.5 rounded">PIN: ${o.pin}</span>
+        </div>
+        <div class="text-[11px] text-slate-300">
+          <strong>Ruta:</strong> ${o.pickupPlace} → <strong>${o.destination}</strong>
+        </div>
+        <div class="text-[10px] text-sky-300 font-mono">
+          Pago: ${o.simCard} (${fmtEur(o.totalEur)}) → Wise: ${o.wiseAccount}
+        </div>
+        <div class="flex flex-wrap gap-1.5 pt-1 text-[10px] font-bold">
+          <span class="px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+            Cocina: ${o.restaurantStatus}
+          </span>
+          <span class="px-2 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30">
+            Chofer: ${o.driverStatus}
+          </span>
+          <span class="px-2 py-0.5 rounded bg-sky-500/15 text-sky-300 border border-sky-500/30">
+            Comisión App: +${fmtEur(o.appProfitEur)}
+          </span>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  function renderDriverView() {
+    const list = document.getElementById('driver-notifications-list');
+    if (state.orders.length === 0) return;
+
+    list.innerHTML = state.orders.map(o => `
+      <div class="bg-slate-900 border border-amber-500/40 rounded-2xl p-3.5 space-y-2.5 shadow-lg">
+        <div class="flex items-center justify-between">
+          <span class="text-[10px] font-black uppercase px-2 py-0.5 rounded bg-amber-500/20 text-amber-300">
+            🔔 Notificación Chofer • ${o.id}
+          </span>
+          <span class="text-xs font-black text-emerald-400">${fmtEur(o.totalEur)}</span>
+        </div>
+
+        <div class="text-xs text-white font-bold">
+          Ir a: <span class="text-amber-300">${o.pickupPlace}</span>
+        </div>
+        <div class="text-xs text-slate-300">
+          Entregar (${o.qty}x Combo BK) en: <strong class="text-white">${o.destination}</strong>
+        </div>
+        <div class="text-[11px] text-slate-400">
+          Estado en cocina: <strong class="text-emerald-400">${o.restaurantStatus}</strong>
+        </div>
+
+        ${!o.liquidated ? `
+          <div class="flex gap-2 pt-1">
+            <button onclick="updateDriverStatus('${o.id}', 'en_ruta_fuentespina')" class="flex-1 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-bold text-amber-300">
+              Salir hacia Fuentespina
+            </button>
+          </div>
+          <div class="bg-slate-950 border border-slate-800 rounded-xl p-2.5 space-y-2">
+            <div class="flex items-center justify-between text-[10px]">
+              <span class="text-slate-400 font-bold">Validar PIN al entregar:</span>
+              <button onclick="fillPinHelper('${o.id}', '${o.pin}')" class="text-amber-400 font-bold hover:underline">Autocompletar (${o.pin})</button>
+            </div>
+            <div class="flex gap-2">
+              <input type="text" maxlength="4" id="pin-verify-${o.id}" placeholder="PIN" class="w-24 bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-center font-black text-sm text-amber-300" />
+              <button onclick="completeOrderWithPin('${o.id}')" class="flex-1 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs">
+                Confirmar Entrega
+              </button>
+            </div>
+          </div>
+        ` : `
+          <div class="bg-emerald-950/50 border border-emerald-500/40 rounded-xl p-2.5 text-xs font-extrabold text-emerald-300 text-center">
+            ✓ Entrega completada y liquidada (PIN #${o.pin})
+          </div>
+        `}
+      </div>
+    `).join('');
+  }
+
+  function renderRestaurantView() {
+    const list = document.getElementById('restaurant-notifications-list');
+    if (state.orders.length === 0) return;
+
+    list.innerHTML = state.orders.map(o => `
+      <div class="bg-slate-900 border border-emerald-500/40 rounded-2xl p-3.5 space-y-2.5 shadow-lg">
+        <div class="flex items-center justify-between">
+          <span class="text-[10px] font-black uppercase px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300">
+            🔔 Notificación Burger King • ${o.id}
+          </span>
+          <span class="text-[10px] font-mono text-sky-300">Wise: ${o.wiseAccount}</span>
+        </div>
+
+        <div class="text-sm font-black text-white">
+          ${o.qty} × ${o.comboName} (${fmtEur(o.foodSub)} comida)
+        </div>
+        <div class="text-[11px] text-slate-300">
+          Destino final del repartidor: <strong>${o.destination}</strong>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2 pt-1">
+          <button onclick="updateRestaurantStatus('${o.id}', 'en_preparacion')" class="py-2.5 px-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs">
+            Dar "Ejecútese" (Preparar)
+          </button>
+          <button onclick="updateRestaurantStatus('${o.id}', 'listo_recoger')" class="py-2.5 px-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs">
+            Listo para Chofer
+          </button>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  // =========================================================================
+  // CONEXIÓN OPCIONAL A FIREBASE EN TIEMPO REAL
+  // =========================================================================
+  function toggleFirebaseModal() {
+    document.getElementById('firebase-modal').classList.toggle('hidden');
+  }
+
+  async function connectFirebaseFromInput() {
+    try {
+      const raw = document.getElementById('firebase-config-input').value.trim();
+      const cfg = JSON.parse(raw);
+      if (!firebase.apps.length) {
+        firebase.initializeApp(cfg);
+      }
+      await firebase.auth().signInAnonymously();
+      const db = firebase.firestore();
+      state.firebaseDb = db;
+      state.firebaseActive = true;
+      document.getElementById('sync-status-label').innerHTML = `<span class="text-emerald-400 font-bold">● Conectado a Firebase (${cfg.projectId})</span>`;
+      toggleFirebaseModal();
+      showToast('¡Sincronización en tiempo real con Firebase activada!');
+
+      db.collection('ordenes_prueba').onSnapshot(snap => {
+        const list = [];
+        snap.forEach(doc => list.push(doc.data()));
+        state.orders = list.reverse();
+        renderAll();
+      });
+    } catch (err) {
+      showToast('Revisa que el JSON de Firebase tenga formato válido.');
+    }
+  }
+
+  function disconnectFirebase() {
+    state.firebaseActive = false;
+    state.firebaseDb = null;
+    document.getElementById('sync-status-label').textContent = 'Modo Local (Listo para conectar Firebase)';
+    toggleFirebaseModal();
+    showToast('Modo local activado.');
+  }
+
+  // Soporta ?rol=conductor o ?rol=restaurante para ocultar la barra de administración en España
+  window.addEventListener('DOMContentLoaded', () => {
+    const params = new URLSearchParams(window.location.search);
+    const rolParam = params.get('rol');
+    if (rolParam === 'conductor') {
+      state.lockedRole = true;
+      document.getElementById('role-switcher-bar').classList.add('hidden');
+      setActiveRole('driver');
+    } else if (rolParam === 'restaurante') {
+      state.lockedRole = true;
+      document.getElementById('role-switcher-bar').classList.add('hidden');
+      setActiveRole('restaurant');
+    } else {
+      setActiveRole('giovanni');
+    }
+    recalcOrderPreview();
+  });
+</script>
+</body>
+</html>
